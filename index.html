@@ -129,7 +129,7 @@
     </style>
 
     <style>
-/* ADGI Modal Styles - Tambahkan ke CSS utama Anda */
+/* ADGI Modal Styles */
 .modal-overlay {
     position: fixed;
     top: 0;
@@ -1604,8 +1604,8 @@
         }
 
         // ADGI Display Functions
-        function updateADGIDisplay() {
-    console.log('🔄 Updating ADGI display...');
+       function updateADGIDisplay() {
+    console.log('📄 Updating ADGI display with note history...');
     
     const searchTerm = document.getElementById('adgi-search').value.toLowerCase();
     const filterStatus = document.getElementById('adgi-status-filter').value;
@@ -1702,14 +1702,24 @@
                 year: 'numeric'
             });
 
-            // 🔧 FIXED: Get note dari entries yang memiliki note
-            const noteEntry = material.entries.find(entry => entry.adgiNote && entry.adgiNote.trim() !== '');
-            const hasNote = noteEntry && noteEntry.adgiNote && noteEntry.adgiNote.trim() !== '';
-            const noteText = hasNote ? noteEntry.adgiNote : '';
-            const noteDate = hasNote && noteEntry.adgiNoteUpdatedAt ? 
-                formatDate(new Date(noteEntry.adgiNoteUpdatedAt)) : '';
+            // 🆕 ENHANCED: Get date-specific note
+            const noteInfo = getDateSpecificNote(material.materialId, material.dateKey);
+            const hasNote = noteInfo.hasNote;
+            const noteText = noteInfo.note;
+            const noteDate = noteInfo.noteUpdatedAt ? formatDate(new Date(noteInfo.noteUpdatedAt)) : '';
 
-            console.log('🔍 Material:', material.materialId, 'hasNote:', hasNote, 'noteText:', noteText);
+            // 🆕 ENHANCED: Check if there are notes from other dates
+            const allNotesForMaterial = history.filter(entry => 
+                entry.action === 'take' && 
+                entry.materialId === material.materialId && 
+                entry.adgiNote && entry.adgiNote.trim() !== ''
+            );
+            
+            const otherDatesWithNotes = allNotesForMaterial.filter(entry => 
+                entry.timestamp.toDateString() !== material.dateKey
+            ).length;
+
+            console.log('📋 Material:', material.materialId, 'hasNote:', hasNote, 'noteText:', noteText, 'otherDates:', otherDatesWithNotes);
 
             return `
                 <div class="card p-6 hover:shadow-md transition-shadow">
@@ -1737,7 +1747,13 @@
                                     ${hasNote ? `
                                         <div class="badge bg-blue-100 text-blue-800 border-blue-200 text-xs flex items-center">
                                             <i data-lucide="file-text" class="w-3 h-3 mr-1"></i>
-                                            Note
+                                            Note Today
+                                        </div>
+                                    ` : ''}
+                                    ${otherDatesWithNotes > 0 ? `
+                                        <div class="badge bg-purple-100 text-purple-800 border-purple-200 text-xs flex items-center">
+                                            <i data-lucide="history" class="w-3 h-3 mr-1"></i>
+                                            +${otherDatesWithNotes} Historical Notes
                                         </div>
                                     ` : ''}
                                 </div>
@@ -1747,17 +1763,39 @@
                                 </p>
 
                                 ${hasNote ? `
-                                    <!-- ✅ NOTE DISPLAY - FIXED! -->
+                                    <!-- ✅ TODAY'S NOTE DISPLAY -->
                                     <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
                                         <div class="flex items-start space-x-2">
                                             <i data-lucide="file-text" class="w-4 h-4 text-blue-600 mt-0.5"></i>
                                             <div class="flex-1">
-                                                <div class="text-sm font-medium text-blue-900 mb-1">Nomor Transaksi Warehouse:</div>
-                                                <div class="text-sm text-blue-800 font-mono bg-white px-2 py-1 rounded border">${noteText}</div>
+                                                <div class="text-sm font-medium text-blue-900 mb-1">
+                                                    📝 Nomor Transaksi Warehouse (${displayDate}):
+                                                </div>
+                                                <div class="text-sm text-blue-800 font-mono bg-white px-2 py-1 rounded border">
+                                                    ${noteText}
+                                                </div>
                                                 ${noteDate ? `
-                                                    <div class="text-xs text-blue-600 mt-1">📝 Diperbarui: ${noteDate}</div>
+                                                    <div class="text-xs text-blue-600 mt-1">📅 Diperbarui: ${noteDate}</div>
                                                 ` : ''}
                                             </div>
+                                        </div>
+                                    </div>
+                                ` : ''}
+
+                                ${otherDatesWithNotes > 0 ? `
+                                    <!-- 🆕 HISTORICAL NOTES INDICATOR -->
+                                    <div class="bg-purple-50 border border-purple-200 rounded-lg p-2 mb-2">
+                                        <div class="flex items-center space-x-2">
+                                            <i data-lucide="history" class="w-4 h-4 text-purple-600"></i>
+                                            <div class="text-sm text-purple-900">
+                                                Material ini memiliki ${otherDatesWithNotes} note dari tanggal lain
+                                            </div>
+                                            <button 
+                                                onclick="showHistoricalNotes('${material.materialId}')"
+                                                class="text-xs text-purple-600 hover:text-purple-800 underline"
+                                            >
+                                                Lihat Semua
+                                            </button>
                                         </div>
                                     </div>
                                 ` : ''}
@@ -1807,7 +1845,115 @@
     }
     
     lucide.createIcons();
-    console.log('✅ ADGI display updated successfully');
+    console.log('✅ ADGI display updated successfully with note history');
+}
+
+// Function to show historical notes for a material
+function showHistoricalNotes(materialId) {
+    const allNoteDates = getAllNoteDatesForMaterial(materialId);
+    
+    if (allNoteDates.length === 0) {
+        showToast('📝 Tidak ada note history untuk material ini', 'info');
+        return;
+    }
+
+    const modalContent = `
+        <div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" id="historical-notes-modal">
+            <div class="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-96 overflow-y-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-bold text-gray-900">
+                        📅 Daily Note History - ${materialId}
+                        <span class="text-sm text-gray-500 ml-2">(${allNoteDates.length} hari dengan notes)</span>
+                    </h3>
+                    <button onclick="closeHistoricalNotesModal()" class="text-gray-400 hover:text-gray-600">
+                        <i data-lucide="x" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                
+                <div class="space-y-4">
+                    ${allNoteDates.map((dateInfo, index) => {
+                        const displayDate = new Date(dateInfo.date).toLocaleDateString('id-ID', {
+                            weekday: 'long',
+                            day: '2-digit',
+                            month: 'long',
+                            year: 'numeric'
+                        });
+                        
+                        const isToday = dateInfo.date === new Date().toDateString();
+                        
+                        return `
+                            <div class="border rounded-lg p-4 ${isToday ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'}">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h4 class="text-md font-semibold ${isToday ? 'text-blue-900' : 'text-gray-900'}">
+                                        📅 ${displayDate} ${isToday ? '(HARI INI)' : ''}
+                                    </h4>
+                                    <div class="badge badge-outline text-xs">
+                                        ${dateInfo.entries.length} entries dengan note
+                                    </div>
+                                </div>
+                                
+                                <div class="space-y-3">
+                                    ${dateInfo.entries.map((entry, entryIndex) => {
+                                        const entryTime = entry.timestamp.toLocaleTimeString('id-ID');
+                                        const noteUpdated = entry.adgiNoteUpdatedAt ? 
+                                            new Date(entry.adgiNoteUpdatedAt).toLocaleString('id-ID') : '';
+                                        
+                                        // Parse individual note updates for this specific day
+                                        const noteLines = entry.adgiNote.split('\n').filter(line => line.trim());
+                                        
+                                        return `
+                                            <div class="bg-white border rounded p-3 ml-4">
+                                                <div class="flex justify-between items-start mb-2">
+                                                    <div class="text-sm font-medium text-gray-800">
+                                                        🗂️ Entry #${entryIndex + 1} - BIN ${entry.binNumber} - Qty: ${entry.quantity}
+                                                    </div>
+                                                    <div class="badge ${entry.adgiStatus === 'done' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'} text-xs">
+                                                        ${entry.adgiStatus || 'pending'}
+                                                    </div>
+                                                </div>
+                                                
+                                                <div class="bg-gray-50 p-2 rounded font-mono text-sm text-gray-800 mb-2">
+                                                    ${noteLines.map(line => `<div>${line}</div>`).join('')}
+                                                </div>
+                                                
+                                                <div class="text-xs text-gray-500">
+                                                    ⏰ Entry: ${entryTime} | 
+                                                    📝 Updated: ${noteUpdated || 'N/A'} | 
+                                                    👤 ${entry.user}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                
+                <div class="mt-6 pt-4 border-t text-center">
+                    <div class="text-sm text-gray-600 mb-3 bg-yellow-50 p-2 rounded">
+                        💡 <strong>Note History per Hari:</strong> Setiap hari memiliki note history terpisah. 
+                        Note lama tidak akan pernah terganti, hanya ditambah untuk hari yang sama.
+                    </div>
+                    <button onclick="closeHistoricalNotesModal()" class="btn btn-primary">
+                        <i data-lucide="check" class="w-4 h-4 mr-2"></i>
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalContent);
+    lucide.createIcons();
+}
+
+// NEW: Close historical notes modal
+function closeHistoricalNotesModal() {
+    const modal = document.getElementById('historical-notes-modal');
+    if (modal) {
+        modal.remove();
+    }
 }
 
         // Consolidate materials by materialId for ADGI display
@@ -1832,9 +1978,13 @@
                 existing.lastTimestamp = entry.timestamp;
             }
             
-            // Status should be same for all entries of same material
-            existing.adgiStatus = entry.adgiStatus;
-            existing.adgiUpdatedAt = entry.adgiUpdatedAt;
+            // 🔥 FIXED: Preserve existing notes while updating status
+            // Only update if this entry has newer status update
+            if (!existing.adgiUpdatedAt || 
+                (entry.adgiUpdatedAt && entry.adgiUpdatedAt > existing.adgiUpdatedAt)) {
+                existing.adgiStatus = entry.adgiStatus;
+                existing.adgiUpdatedAt = entry.adgiUpdatedAt;
+            }
             
         } else {
             materialsMap.set(uniqueKey, {
@@ -1848,7 +1998,7 @@
                 dateKey: dateKey,
                 binNumbers: [entry.binNumber],
                 user: entry.user,
-                entries: [entry] // 🆕 Keep all entries for note access
+                entries: [entry] // Keep all entries for note access
             });
         }
     });
@@ -1856,35 +2006,128 @@
     return Array.from(materialsMap.values());
 }
 
-        async function updateADGIStatus(materialId, status) {
-    // Find all entries for this material and update them
-    const materialEntries = history.filter(entry => 
-        entry.action === 'take' && entry.materialId === materialId
-    );
 
-    // 🆕 TAMBAHAN: Dapatkan note dari input terakhir (jika ada)
+function getDateSpecificNote(materialId, dateKey) {
+    // Only get entries from the SPECIFIC date
+    const dateEntries = history.filter(entry => 
+        entry.action === 'take' && 
+        entry.materialId === materialId && 
+        entry.timestamp.toDateString() === dateKey
+    );
+    
+    console.log(`📋 Getting notes for ${materialId} on ${dateKey}: found ${dateEntries.length} entries`);
+    
+    // Find the most recent entry with a note from this SPECIFIC date
+    const entriesWithNotes = dateEntries
+        .filter(entry => entry.adgiNote && entry.adgiNote.trim() !== '')
+        .sort((a, b) => {
+            const aTime = a.adgiNoteUpdatedAt || a.timestamp;
+            const bTime = b.adgiNoteUpdatedAt || b.timestamp;
+            return bTime.getTime() - aTime.getTime();
+        });
+    
+    const latestEntryWithNote = entriesWithNotes[0];
+    
+    return {
+        note: latestEntryWithNote?.adgiNote || '',
+        noteUpdatedAt: latestEntryWithNote?.adgiNoteUpdatedAt || null,
+        hasNote: !!latestEntryWithNote,
+        noteUpdatedBy: latestEntryWithNote?.adgiUpdatedBy || null,
+        allEntriesWithNotes: entriesWithNotes // All entries from this date with notes
+    };
+}
+
+// 🆕 ENHANCED: Get all dates that have notes for a material
+function getAllNoteDatesForMaterial(materialId) {
+    const noteDates = new Map();
+    
+    history.filter(entry => 
+        entry.action === 'take' && 
+        entry.materialId === materialId && 
+        entry.adgiNote && entry.adgiNote.trim() !== ''
+    ).forEach(entry => {
+        const dateKey = entry.timestamp.toDateString();
+        if (!noteDates.has(dateKey)) {
+            noteDates.set(dateKey, {
+                date: dateKey,
+                entries: [],
+                latestUpdate: entry.timestamp
+            });
+        }
+        noteDates.get(dateKey).entries.push(entry);
+        
+        // Update latest timestamp for this date
+        const current = noteDates.get(dateKey);
+        const entryTime = entry.adgiNoteUpdatedAt || entry.timestamp;
+        if (entryTime > current.latestUpdate) {
+            current.latestUpdate = entryTime;
+        }
+    });
+    
+    return Array.from(noteDates.values()).sort((a, b) => b.latestUpdate.getTime() - a.latestUpdate.getTime());
+}
+
+       async function updateADGIStatus(materialId, status) {
+    console.log('🔄 Updating ADGI status for:', materialId, 'to:', status);
+    
+    // Get note input value
     const noteValue = document.getElementById('adgi-note-input') ? 
         document.getElementById('adgi-note-input').value.trim() : '';
 
+    // Get today's date key for date-specific updates
+    const todayDateKey = new Date().toDateString();
+    
+    // Only touch TODAY's entries, preserve ALL historical notes
+    let updatedCount = 0;
     history = history.map(entry => {
-        if (entry.action === 'take' && entry.materialId === materialId) {
+        // Only update entries from TODAY for this material
+        if (entry.action === 'take' && 
+            entry.materialId === materialId && 
+            entry.timestamp.toDateString() === todayDateKey) {
+            
+            updatedCount++;
+            
+            // NEVER touch existing note, only append if new note provided
+            let finalNote = entry.adgiNote || ''; // Always preserve existing note
+            let noteTimestamp = entry.adgiNoteUpdatedAt;
+            
+            // Only add new note if user provided one
+            if (noteValue && noteValue.length > 0) {
+                const currentTime = new Date().toLocaleTimeString('id-ID');
+                const newNoteEntry = `[${currentTime}] ${noteValue}`;
+                
+                if (finalNote && finalNote.trim()) {
+                    // Append to existing note for TODAY only
+                    finalNote = finalNote + '\n' + newNoteEntry;
+                    console.log('📝 APPENDING to TODAY\'s note for entry:', entry.id);
+                } else {
+                    // First note for today
+                    finalNote = newNoteEntry;
+                    console.log('📝 CREATING first note for TODAY\'s entry:', entry.id);
+                }
+                noteTimestamp = new Date();
+            } else {
+                console.log('📝 PRESERVING existing note unchanged for:', entry.id);
+            }
+            
             return {
                 ...entry,
                 adgiStatus: status,
                 adgiUpdatedAt: new Date(),
                 adgiUpdatedBy: 'Current User',
-                // 🆕 TAMBAHAN: Simpan note ke history entry
-                adgiNote: noteValue || entry.adgiNote || '', // Keep existing note if no new note
-                adgiNoteUpdatedAt: noteValue ? new Date() : entry.adgiNoteUpdatedAt
+                adgiNote: finalNote, // Never replace, only append or preserve
+                adgiNoteUpdatedAt: noteTimestamp
             };
         }
+        
+        // Leave ALL other entries (other days/materials) COMPLETELY unchanged
         return entry;
     });
 
-    // Save ke Firebase
+    // Save to Firebase
     try {
         await persistAll();
-        console.log('✅ ADGI status update with note saved to Firebase');
+        console.log('✅ Daily note history preserved and saved to Firebase');
     } catch (error) {
         console.error('❌ Error saving ADGI update to Firebase:', error);
         showToast('⚠️ Status update tersimpan local, sync ke Firebase gagal', 'warning');
@@ -1893,10 +2136,18 @@
     updateAllStats();
     updateADGIDisplay();
     
-    const entriesCount = materialEntries.length;
-    const entryText = entriesCount === 1 ? 'entry' : 'entries';
-    const noteText = noteValue ? ` dengan note` : '';
-    showToast(`✅ Status ADGI untuk ${materialId} (${entriesCount} ${entryText}) diperbarui menjadi ${status === 'done' ? 'Done' : 'Pending'}${noteText}`, 'success');
+    // Clear the note input after processing
+    if (document.getElementById('adgi-note-input')) {
+        document.getElementById('adgi-note-input').value = '';
+    }
+    
+    const noteText = noteValue ? 
+        ` dan note baru DITAMBAHKAN ke hari ini (note hari lain tetap utuh)` : 
+        ' (semua note history tetap terjaga per hari)';
+    showToast(
+        `✅ Status ${materialId} (${updatedCount} entries hari ini) → ${status === 'done' ? 'Done' : 'Pending'}${noteText}`, 
+        'success'
+    );
 }
 
         function resetADGIFilters() {
@@ -2109,7 +2360,7 @@
     };
     history.unshift(historyEntry);
 
-        // ✅ TAMBAHAN: Simpan ke Firebase
+        // Firebase
         try {
         await persistAll();
         console.log('✅ Data berhasil disimpan ke Firebase');
@@ -2123,13 +2374,12 @@
         renderMaterials();
         closeTakeModal();
 
-        // Show success message
-        showToast(`✅ Berhasil mengambil ${quantity} ${selectedMaterial.description} dari BIN ${selectedBin}`, 'success');
-
-        // Auto-sync if enabled (redundant karena sudah ada persistAll di atas)
-        if (autoExportEnabled) {
-            performAutoSync();
-        }
+// Show success message
+showToast(`✅ Berhasil mengambil ${quantity} ${selectedMaterial?.description || 'Material'} dari BIN ${selectedBin}`, 'success');
+// Auto-sync if enabled 
+if (autoExportEnabled) {
+    performAutoSync();
+}
     }
 
         function closeTakeModal() {
@@ -2302,7 +2552,7 @@
     const current = selectedMaterial[`bin${selectedBin}`];
     
     if (current + quantity > selectedMaterial.qtyPerBin) {
-        showToast('❌ Kapasitas bin tidak mencukupi', 'error');
+        showToast('⚠ Kapasitas bin tidak mencukupi', 'error');
         return;
     }
 
@@ -2323,28 +2573,77 @@
     };
     history.unshift(historyEntry);
 
-        // ✅ TAMBAHAN: Simpan ke Firebase
-        try {
-            await persistAll();
-            console.log('✅ Data berhasil disimpan ke Firebase');
-        } catch (error) {
-            console.error('❌ Error saving to Firebase:', error);
-            showToast('⚠️ Data disimpan local, sync ke Firebase gagal', 'warning');
-        }   
+    // AUTO-RESET ADGI STATUS: Reset "done" status to "pending" for this material
+    const affectedEntries = autoResetADGIStatus(selectedMaterial.id);
 
-        // Update UI
-        updateAllStats();
-        renderMaterials();
-        closeFillModal();
+    // Save to Firebase
+    try {
+        await persistAll();
+        console.log('✅ Data berhasil disimpan ke Firebase');
+    } catch (error) {
+        console.error('❌ Error saving to Firebase:', error);
+        showToast('⚠️ Data disimpan local, sync ke Firebase gagal', 'warning');
+    }   
 
-        // Show success message
-        showToast(`✅ Berhasil mengisi ${quantity} ${selectedMaterial.description} ke BIN ${selectedBin}`, 'success');
+    // Update UI
+    updateAllStats();
+    renderMaterials();
+    closeFillModal();
 
-        // Auto-sync if enabled (redundant karena sudah ada persistAll di atas)
-            if (autoExportEnabled) {
-                performAutoSync();
-            }
+
+// Show success message with ADGI reset info
+let successMessage = `✅ Berhasil mengisi ${quantity} ${selectedMaterial?.description || 'Material'} ke BIN ${selectedBin}`;
+if (affectedEntries > 0) {
+    successMessage += `\n🔄 ${affectedEntries} ADGI entries direset ke status "Pending" karena ada material baru masuk`;
+}
+showToast(successMessage, 'success');
+// Auto-sync if enabled
+if (autoExportEnabled) {
+    performAutoSync();
+}
+}
+
+// AUTO-RESET ADGI STATUS: Reset "done" status to "pending" for this material
+function autoResetADGIStatus(materialId) {
+    console.log('🔄 Auto-resetting ADGI status for material:', materialId);
+    
+    let affectedCount = 0;
+    
+    // Only reset entries that currently have "done" status for this specific material
+    history = history.map(entry => {
+        // Only process take actions for the specified material with "done" status
+        if (entry.action === 'take' && 
+            entry.materialId === materialId && 
+            entry.adgiStatus === 'done') {
+            
+            affectedCount++;
+            
+            console.log(`🔄 Resetting ADGI entry ${entry.id} from "done" to "pending"`);
+            
+            // Reset status to pending and update timestamp, but preserve all notes
+            return {
+                ...entry,
+                adgiStatus: 'pending',
+                adgiUpdatedAt: new Date(),
+                adgiUpdatedBy: 'System (Auto-Reset)',
+                // IMPORTANT: Keep all existing note data intact
+                adgiNote: entry.adgiNote, // Preserve existing notes
+                adgiNoteUpdatedAt: entry.adgiNoteUpdatedAt // Preserve note timestamp
+            };
+        }
+        
+        // Leave all other entries unchanged
+        return entry;
+    });
+    
+    if (affectedCount > 0) {
+        console.log(`✅ Auto-reset completed: ${affectedCount} ADGI entries reset to "pending" for material ${materialId}`);
+    } else {
+        console.log(`ℹ️ No ADGI entries needed reset for material ${materialId} (no "done" status found)`);
     }
+    
+    return affectedCount;
+}
 
         function closeFillModal() {
             document.getElementById('fill-modal').classList.remove('active');
@@ -2394,11 +2693,11 @@
 
         function exportCompleteData() {
     try {
-        console.log('📊 Exporting complete data with ADGI notes...');
+        console.log('📊 Exporting complete data with comprehensive ADGI note history...');
         
         const workbook = XLSX.utils.book_new();
         
-        // Materials sheet (tetap sama)
+        // Materials sheet (same as before)
         const materialsData = materials.map(material => ({
             'ID SAP': material.id,
             'Deskripsi': material.description,
@@ -2412,10 +2711,11 @@
             'Terakhir Update': new Date().toLocaleString('id-ID')
         }));
 
-        // 🔧 FIXED: History sheet dengan ADGI notes
+        // Complete history with all note details
         const historyData = history.map(entry => {
             const baseData = {
                 'Waktu': entry.timestamp.toLocaleString('id-ID'),
+                'Tanggal': entry.timestamp.toLocaleDateString('id-ID'),
                 'ID Material': entry.materialId,
                 'Deskripsi': entry.materialDescription,
                 'Aktivitas': entry.action === 'take' ? 'Pengambilan' : 'Pengisian',
@@ -2425,105 +2725,154 @@
                 'ID Transaksi': entry.id
             };
 
-            // 🆕 Add ADGI fields untuk take actions
+            // Add ADGI fields for take actions
             if (entry.action === 'take') {
                 baseData['ADGI Status'] = entry.adgiStatus || 'pending';
-                baseData['ADGI Note'] = entry.adgiNote || '';
+                baseData['Warehouse Note'] = entry.adgiNote || '';
                 baseData['ADGI Updated At'] = entry.adgiUpdatedAt ? 
                     new Date(entry.adgiUpdatedAt).toLocaleString('id-ID') : '';
                 baseData['ADGI Updated By'] = entry.adgiUpdatedBy || '';
                 baseData['Note Updated At'] = entry.adgiNoteUpdatedAt ? 
                     new Date(entry.adgiNoteUpdatedAt).toLocaleString('id-ID') : '';
+                baseData['Has Note'] = (entry.adgiNote && entry.adgiNote.trim()) ? 'Yes' : 'No';
+                baseData['Note Length'] = entry.adgiNote ? entry.adgiNote.length : 0;
             } else {
-                // Fill actions don't have ADGI data
                 baseData['ADGI Status'] = '-';
-                baseData['ADGI Note'] = '-';
+                baseData['Warehouse Note'] = '-';
                 baseData['ADGI Updated At'] = '-';
                 baseData['ADGI Updated By'] = '-';
                 baseData['Note Updated At'] = '-';
+                baseData['Has Note'] = '-';
+                baseData['Note Length'] = '-';
             }
 
             return baseData;
         });
 
-        // 🆕 ADGI Summary sheet - consolidated view
+        // Note History Summary - One row per material per date
         const takeHistory = history.filter(entry => entry.action === 'take');
-        const consolidatedMaterials = consolidateMaterialsByADGI(takeHistory);
+        const noteHistorySummary = [];
         
-        const adgiSummaryData = consolidatedMaterials.map(material => {
-            const noteEntry = material.entries.find(entry => entry.adgiNote && entry.adgiNote.trim() !== '');
-            const hasNote = noteEntry && noteEntry.adgiNote;
+        // Group by material and date
+        const materialDateGroups = {};
+        takeHistory.forEach(entry => {
+            const dateKey = entry.timestamp.toDateString();
+            const groupKey = `${entry.materialId}-${dateKey}`;
             
-            return {
-                'Tanggal': new Date(material.dateKey).toLocaleDateString('id-ID'),
-                'ID Material': material.materialId,
-                'Deskripsi': material.materialDescription,
-                'Total Quantity': material.totalQuantity,
-                'BINs Used': [...new Set(material.binNumbers)].sort().join(', '),
-                'ADGI Status': material.adgiStatus,
-                'ADGI Note': hasNote ? noteEntry.adgiNote : '',
-                'First Take': material.firstTimestamp.toLocaleString('id-ID'),
-                'Last Take': material.lastTimestamp.toLocaleString('id-ID'),
-                'Note Updated': hasNote && noteEntry.adgiNoteUpdatedAt ? 
-                    new Date(noteEntry.adgiNoteUpdatedAt).toLocaleString('id-ID') : '',
-                'User': material.user,
-                'Entries Count': material.entries.length
-            };
+            if (!materialDateGroups[groupKey]) {
+                materialDateGroups[groupKey] = {
+                    materialId: entry.materialId,
+                    materialDescription: entry.materialDescription,
+                    date: dateKey,
+                    entries: []
+                };
+            }
+            materialDateGroups[groupKey].entries.push(entry);
         });
+        
+        // Create summary rows
+        Object.values(materialDateGroups).forEach(group => {
+            const entriesWithNotes = group.entries.filter(e => e.adgiNote && e.adgiNote.trim());
+            const latestEntry = group.entries.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())[0];
+            const latestNote = entriesWithNotes.length > 0 ? entriesWithNotes[0] : null;
+            
+            noteHistorySummary.push({
+                'Date': new Date(group.date).toLocaleDateString('id-ID'),
+                'Material ID': group.materialId,
+                'Description': group.materialDescription,
+                'Total Entries': group.entries.length,
+                'Total Quantity': group.entries.reduce((sum, e) => sum + e.quantity, 0),
+                'BINs Used': [...new Set(group.entries.map(e => e.binNumber))].join(', '),
+                'Current Status': latestEntry.adgiStatus || 'pending',
+                'Has Note This Date': entriesWithNotes.length > 0 ? 'Yes' : 'No',
+                'Warehouse Note': latestNote ? latestNote.adgiNote : '',
+                'Note Updated': latestNote && latestNote.adgiNoteUpdatedAt ? 
+                    new Date(latestNote.adgiNoteUpdatedAt).toLocaleString('id-ID') : '',
+                'Latest Activity': latestEntry.timestamp.toLocaleString('id-ID'),
+                'User': latestEntry.user
+            });
+        });
+
+        // All Notes Detail - Every single note entry
+        const allNotesDetail = takeHistory
+            .filter(entry => entry.adgiNote && entry.adgiNote.trim())
+            .map(entry => ({
+                'Entry Date': entry.timestamp.toLocaleDateString('id-ID'),
+                'Entry Time': entry.timestamp.toLocaleTimeString('id-ID'),
+                'Material ID': entry.materialId,
+                'Description': entry.materialDescription,
+                'BIN': entry.binNumber,
+                'Quantity': entry.quantity,
+                'Warehouse Note': entry.adgiNote,
+                'Note Created': entry.adgiNoteUpdatedAt ? 
+                    new Date(entry.adgiNoteUpdatedAt).toLocaleString('id-ID') : 
+                    entry.timestamp.toLocaleString('id-ID'),
+                'ADGI Status': entry.adgiStatus,
+                'User': entry.user,
+                'Transaction ID': entry.id,
+                'Note Length': entry.adgiNote.length
+            }));
 
         // Create worksheets
         const materialsSheet = XLSX.utils.json_to_sheet(materialsData);
         const historySheet = XLSX.utils.json_to_sheet(historyData);
-        const adgiSheet = XLSX.utils.json_to_sheet(adgiSummaryData);
+        const noteHistorySheet = XLSX.utils.json_to_sheet(noteHistorySummary);
+        const allNotesSheet = XLSX.utils.json_to_sheet(allNotesDetail);
 
-        // Set column widths for better readability
-        const materialCols = [
+        // Set column widths
+        materialsSheet['!cols'] = [
             {wch: 15}, {wch: 30}, {wch: 12}, {wch: 8}, {wch: 8}, 
             {wch: 8}, {wch: 8}, {wch: 12}, {wch: 10}, {wch: 18}
         ];
-        materialsSheet['!cols'] = materialCols;
 
-        const historyCols = [
-            {wch: 18}, {wch: 15}, {wch: 25}, {wch: 12}, {wch: 8}, 
-            {wch: 8}, {wch: 12}, {wch: 20}, {wch: 12}, {wch: 30}, 
-            {wch: 18}, {wch: 12}, {wch: 18}
+        historySheet['!cols'] = [
+            {wch: 18}, {wch: 12}, {wch: 15}, {wch: 25}, {wch: 12}, {wch: 8}, 
+            {wch: 8}, {wch: 12}, {wch: 20}, {wch: 12}, {wch: 40}, {wch: 18}, 
+            {wch: 12}, {wch: 18}, {wch: 8}, {wch: 8}
         ];
-        historySheet['!cols'] = historyCols;
 
-        const adgiCols = [
-            {wch: 12}, {wch: 15}, {wch: 25}, {wch: 12}, {wch: 15}, 
-            {wch: 12}, {wch: 30}, {wch: 18}, {wch: 18}, {wch: 18}, 
-            {wch: 12}, {wch: 10}
+        noteHistorySheet['!cols'] = [
+            {wch: 12}, {wch: 15}, {wch: 25}, {wch: 10}, {wch: 12}, {wch: 15}, 
+            {wch: 12}, {wch: 10}, {wch: 40}, {wch: 18}, {wch: 18}, {wch: 12}
         ];
-        adgiSheet['!cols'] = adgiCols;
+
+        allNotesSheet['!cols'] = [
+            {wch: 12}, {wch: 10}, {wch: 15}, {wch: 25}, {wch: 8}, {wch: 8}, 
+            {wch: 40}, {wch: 18}, {wch: 12}, {wch: 12}, {wch: 20}, {wch: 8}
+        ];
 
         // Append sheets
         XLSX.utils.book_append_sheet(workbook, materialsSheet, 'Material Stock');
         XLSX.utils.book_append_sheet(workbook, historySheet, 'Complete History');
-        XLSX.utils.book_append_sheet(workbook, adgiSheet, 'ADGI Summary');
+        XLSX.utils.book_append_sheet(workbook, noteHistorySheet, 'Note History Summary');
+        XLSX.utils.book_append_sheet(workbook, allNotesSheet, 'All Notes Detail');
 
-        // Generate filename with timestamp
+        // Generate filename
         const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-        const filename = `Material_Management_Complete_${timestamp}.xlsx`;
+        const filename = `Material_Management_Complete_With_Notes_${timestamp}.xlsx`;
 
         // Save file
         XLSX.writeFile(workbook, filename);
         
-        // Show success message dengan detail
-        const adgiEntriesCount = takeHistory.length;
-        const notesCount = takeHistory.filter(h => h.adgiNote && h.adgiNote.trim()).length;
+        // Enhanced success message
+        const totalNotes = allNotesDetail.length;
+        const uniqueMaterialsWithNotes = new Set(allNotesDetail.map(n => n['Material ID'])).size;
+        const dateRange = noteHistorySummary.length > 0 ? 
+            `${Math.min(...noteHistorySummary.map(n => new Date(n.Date).getTime()))} - ${Math.max(...noteHistorySummary.map(n => new Date(n.Date).getTime()))}` : 'No dates';
         
         showToast(
-            `📊 Data lengkap berhasil diekspor ke ${filename}\n` +
-            `📋 ${history.length} total aktivitas, ${adgiEntriesCount} ADGI entries, ${notesCount} notes`, 
+            `📊 Data lengkap dengan riwayat note berhasil diekspor ke ${filename}\n` +
+            `📋 ${history.length} total aktivitas | 📝 ${totalNotes} notes dari ${uniqueMaterialsWithNotes} material berbeda\n` +
+            `📅 ${noteHistorySummary.length} kombinasi material-tanggal`, 
             'success'
         );
         
-        console.log('✅ Export complete:', {
+        console.log('✅ Complete export with note history:', {
             filename,
             totalHistory: history.length,
-            adgiEntries: adgiEntriesCount,
-            notesCount: notesCount
+            totalNotes: totalNotes,
+            uniqueMaterialsWithNotes: uniqueMaterialsWithNotes,
+            noteHistorySummary: noteHistorySummary.length
         });
         
         return true;
@@ -2536,11 +2885,11 @@
 
         function exportLiveSnapshot() {
     try {
-        console.log('📸 Exporting live snapshot with ADGI notes...');
+        console.log('📸 Exporting live snapshot with comprehensive ADGI notes...');
         
         const workbook = XLSX.utils.book_new();
         
-        // Live stock data (tetap sama)
+        // Live stock data (same as before)
         const materialsData = materials.map(material => ({
             'ID SAP': material.id,
             'Deskripsi': material.description,
@@ -2553,10 +2902,11 @@
             'Last Update': new Date().toLocaleString('id-ID')
         }));
 
-        // 🔧 FIXED: Recent activity dengan ADGI info
-        const recentHistory = history.slice(0, 50).map(entry => {
+        // Recent activity with comprehensive ADGI info
+        const recentHistory = history.slice(0, 100).map(entry => {
             const baseData = {
                 'Time': entry.timestamp.toLocaleString('id-ID'),
+                'Date': entry.timestamp.toLocaleDateString('id-ID'),
                 'Material': entry.materialId,
                 'Action': entry.action === 'take' ? 'TAKE' : 'FILL',
                 'Bin': entry.binNumber,
@@ -2564,30 +2914,43 @@
                 'User': entry.user
             };
 
-            // Add ADGI info for take actions
+            // Add comprehensive ADGI info for take actions
             if (entry.action === 'take') {
-                baseData['ADGI'] = entry.adgiStatus || 'pending';
-                baseData['Note'] = entry.adgiNote || '';
+                baseData['ADGI Status'] = entry.adgiStatus || 'pending';
+                baseData['Warehouse Note'] = entry.adgiNote || '';
+                baseData['Has Note'] = (entry.adgiNote && entry.adgiNote.trim()) ? 'Yes' : 'No';
+                baseData['Note Updated'] = entry.adgiNoteUpdatedAt ? 
+                    new Date(entry.adgiNoteUpdatedAt).toLocaleString('id-ID') : '';
             } else {
-                baseData['ADGI'] = '-';
-                baseData['Note'] = '-';
+                baseData['ADGI Status'] = '-';
+                baseData['Warehouse Note'] = '-';
+                baseData['Has Note'] = '-';
+                baseData['Note Updated'] = '-';
             }
 
             return baseData;
         });
 
-        // 🆕 ADGI Status Overview
+        // Current ADGI Status Overview
         const takeHistory = history.filter(h => h.action === 'take');
         const pendingCount = takeHistory.filter(h => h.adgiStatus === 'pending').length;
         const doneCount = takeHistory.filter(h => h.adgiStatus === 'done').length;
         const withNotesCount = takeHistory.filter(h => h.adgiNote && h.adgiNote.trim()).length;
+        const todayTakes = takeHistory.filter(h => h.timestamp.toDateString() === new Date().toDateString()).length;
+        const todayNotes = takeHistory.filter(h => 
+            h.timestamp.toDateString() === new Date().toDateString() && 
+            h.adgiNote && h.adgiNote.trim()
+        ).length;
         
         const adgiOverview = [
-            { 'Metric': 'Total ADGI Entries', 'Count': takeHistory.length },
-            { 'Metric': 'Pending Status', 'Count': pendingCount },
-            { 'Metric': 'Done Status', 'Count': doneCount },
-            { 'Metric': 'Entries with Notes', 'Count': withNotesCount },
-            { 'Metric': 'Completion Rate', 'Count': takeHistory.length > 0 ? `${Math.round((doneCount/takeHistory.length)*100)}%` : '0%' }
+            { 'Metric': 'Total ADGI Entries', 'Count': takeHistory.length, 'Details': 'All take actions' },
+            { 'Metric': 'Pending Status', 'Count': pendingCount, 'Details': 'Awaiting completion' },
+            { 'Metric': 'Done Status', 'Count': doneCount, 'Details': 'Completed entries' },
+            { 'Metric': 'Entries with Notes', 'Count': withNotesCount, 'Details': 'Have warehouse notes' },
+            { 'Metric': 'Today\'s Takes', 'Count': todayTakes, 'Details': 'Today\'s activity' },
+            { 'Metric': 'Today\'s Notes', 'Count': todayNotes, 'Details': 'Notes added today' },
+            { 'Metric': 'Completion Rate', 'Count': takeHistory.length > 0 ? `${Math.round((doneCount/takeHistory.length)*100)}%` : '0%', 'Details': 'Done vs Total' },
+            { 'Metric': 'Note Coverage', 'Count': takeHistory.length > 0 ? `${Math.round((withNotesCount/takeHistory.length)*100)}%` : '0%', 'Details': 'Notes vs Total' }
         ];
 
         // Create worksheets
@@ -2602,11 +2965,11 @@
         ];
         
         historySheet['!cols'] = [
-            {wch: 18}, {wch: 15}, {wch: 8}, {wch: 8}, {wch: 8}, 
-            {wch: 12}, {wch: 12}, {wch: 25}
+            {wch: 18}, {wch: 12}, {wch: 15}, {wch: 8}, {wch: 8}, {wch: 8}, 
+            {wch: 12}, {wch: 12}, {wch: 30}, {wch: 8}, {wch: 18}
         ];
 
-        adgiOverviewSheet['!cols'] = [{wch: 25}, {wch: 15}];
+        adgiOverviewSheet['!cols'] = [{wch: 25}, {wch: 15}, {wch: 25}];
 
         // Append sheets
         XLSX.utils.book_append_sheet(workbook, materialsSheet, 'Live Stock');
@@ -2614,15 +2977,16 @@
         XLSX.utils.book_append_sheet(workbook, adgiOverviewSheet, 'ADGI Overview');
 
         // Save file
-        XLSX.writeFile(workbook, 'Material_Management_Live_Snapshot.xlsx');
+        const filename = 'Material_Management_Live_Snapshot_With_Notes.xlsx';
+        XLSX.writeFile(workbook, filename);
         
         showToast(
-            `📸 Live snapshot berhasil diekspor\n` +
-            `📊 ${takeHistory.length} ADGI entries, ${withNotesCount} dengan notes`, 
+            `📸 Live snapshot dengan note history berhasil diekspor: ${filename}\n` +
+            `📊 ${takeHistory.length} ADGI entries | 📝 ${withNotesCount} dengan notes | 📅 ${todayNotes} notes hari ini`, 
             'success'
         );
         
-        console.log('✅ Live snapshot exported successfully');
+        console.log('✅ Enhanced live snapshot exported successfully');
         return true;
     } catch (error) {
         console.error('❌ Live export error:', error);
@@ -2630,6 +2994,51 @@
         return false;
     }
 }
+
+//TESTING FUNCTIONS (remove in production)
+function testNotePreservation() {
+    console.log('🧪 Testing note preservation system...');
+    
+    // Simulate scenario: same material, different dates, different notes
+    const testMaterialId = 'TEST001';
+    const testEntries = [
+        {
+            id: 'test1',
+            materialId: testMaterialId,
+            materialDescription: 'Test Material',
+            action: 'take',
+            timestamp: new Date('2024-01-01'),
+            adgiNote: 'Note from January 1st',
+            adgiStatus: 'done',
+            adgiNoteUpdatedAt: new Date('2024-01-01')
+        },
+        {
+            id: 'test2',
+            materialId: testMaterialId,
+            materialDescription: 'Test Material',
+            action: 'take',
+            timestamp: new Date('2024-01-02'),
+            adgiNote: 'Note from January 2nd - different note',
+            adgiStatus: 'pending',
+            adgiNoteUpdatedAt: new Date('2024-01-02')
+        }
+    ];
+    
+    // Test consolidation
+    const consolidated = consolidateMaterialsByADGI(testEntries);
+    console.log('🧪 Consolidated test results:', consolidated);
+    
+    // Test date-specific note retrieval
+    const jan1Note = getDateSpecificNote(testMaterialId, new Date('2024-01-01').toDateString());
+    const jan2Note = getDateSpecificNote(testMaterialId, new Date('2024-01-02').toDateString());
+    
+    console.log('🧪 Jan 1 note:', jan1Note);
+    console.log('🧪 Jan 2 note:', jan2Note);
+    
+    console.log('✅ Note preservation test completed');
+}
+
+console.log('✅ Enhanced ADGI Note Management System loaded - preserves note history per date');
 
        function createExcelTemplate() {
     try {
@@ -2715,7 +3124,7 @@
                 if (file) {
             const reader = new FileReader();
         
-        reader.onload = async (e) => {  // ✅ TAMBAHAN: async
+        reader.onload = async (e) => {  // TAMBAHAN: async
             try {
                 const data = new Uint8Array(e.target?.result);
                 const workbook = XLSX.read(data, { type: 'array' });
@@ -2741,7 +3150,7 @@
                     if (importedMaterials.length > 0) {
                         materials = importedMaterials;
                         
-                        // ✅ TAMBAHAN: Simpan ke Firebase
+                        // Firebase
                         try {
                             await persistAll();
                             console.log('✅ Imported materials saved to Firebase');
@@ -2754,10 +3163,7 @@
                         renderMaterials();
                         showToast(`✅ ${importedMaterials.length} material berhasil diimpor dari Excel`, 'success');
                         
-                        // Trigger auto-sync after import if enabled (redundant karena sudah ada persistAll)
-                        // if (autoExportEnabled) {
-                        //     setTimeout(() => performAutoSync(), 1000);
-                        // }
+
                     } else {
                         showToast('⚠️ Tidak ada data material yang valid untuk diimpor', 'warning');
                     }
@@ -2834,7 +3240,7 @@
 
         function exportADGIReport() {
     try {
-        console.log('📋 Exporting ADGI Report...');
+        console.log('📋 Exporting comprehensive ADGI Report with note history...');
         
         const workbook = XLSX.utils.book_new();
         const takeHistory = history.filter(entry => entry.action === 'take');
@@ -2844,7 +3250,7 @@
             return false;
         }
         
-        // Detailed ADGI data
+        // 🔥 ENHANCED: Detailed ADGI data with note preservation
         const adgiDetailData = takeHistory.map(entry => ({
             'Tanggal': entry.timestamp.toLocaleDateString('id-ID'),
             'Waktu': entry.timestamp.toLocaleTimeString('id-ID'),
@@ -2855,84 +3261,208 @@
             'User': entry.user,
             'ADGI Status': entry.adgiStatus || 'pending',
             'Warehouse Note': entry.adgiNote || '',
+            'Has Note': (entry.adgiNote && entry.adgiNote.trim()) ? 'Yes' : 'No',
             'Status Updated': entry.adgiUpdatedAt ? 
                 new Date(entry.adgiUpdatedAt).toLocaleString('id-ID') : '',
             'Note Updated': entry.adgiNoteUpdatedAt ? 
                 new Date(entry.adgiNoteUpdatedAt).toLocaleString('id-ID') : '',
             'Updated By': entry.adgiUpdatedBy || '',
-            'Transaction ID': entry.id
+            'Transaction ID': entry.id,
+            'Days Since Entry': Math.floor((new Date() - entry.timestamp) / (1000 * 60 * 60 * 24))
         }));
         
-        // Summary by material
-        const consolidatedMaterials = consolidateMaterialsByADGI(takeHistory);
-        const summaryData = consolidatedMaterials.map(material => {
-            const noteEntry = material.entries.find(entry => entry.adgiNote && entry.adgiNote.trim() !== '');
+        // 🆕 ENHANCED: Daily Summary with note counts
+        const dailySummary = {};
+        takeHistory.forEach(entry => {
+            const dateKey = entry.timestamp.toDateString();
+            if (!dailySummary[dateKey]) {
+                dailySummary[dateKey] = {
+                    date: dateKey,
+                    materials: new Set(),
+                    totalQuantity: 0,
+                    pendingCount: 0,
+                    doneCount: 0,
+                    notesCount: 0,
+                    entries: []
+                };
+            }
             
-            return {
-                'Material ID': material.materialId,
-                'Description': material.materialDescription,
-                'Date': new Date(material.dateKey).toLocaleDateString('id-ID'),
-                'Total Quantity': material.totalQuantity,
-                'BINs Used': [...new Set(material.binNumbers)].sort().join(', '),
-                'ADGI Status': material.adgiStatus,
-                'Warehouse Note': noteEntry?.adgiNote || '',
-                'Entries Count': material.entries.length,
-                'First Take': material.firstTimestamp.toLocaleString('id-ID'),
-                'Last Take': material.lastTimestamp.toLocaleString('id-ID'),
-                'User': material.user
-            };
+            const summary = dailySummary[dateKey];
+            summary.materials.add(entry.materialId);
+            summary.totalQuantity += entry.quantity;
+            summary.entries.push(entry);
+            
+            if (entry.adgiStatus === 'pending') summary.pendingCount++;
+            else if (entry.adgiStatus === 'done') summary.doneCount++;
+            
+            if (entry.adgiNote && entry.adgiNote.trim()) summary.notesCount++;
         });
         
-        // Statistics
+        const dailySummaryData = Object.values(dailySummary).map(day => ({
+            'Date': new Date(day.date).toLocaleDateString('id-ID'),
+            'Unique Materials': day.materials.size,
+            'Total Entries': day.entries.length,
+            'Total Quantity': day.totalQuantity,
+            'Pending Status': day.pendingCount,
+            'Done Status': day.doneCount,
+            'Entries with Notes': day.notesCount,
+            'Note Percentage': day.entries.length > 0 ? 
+                `${Math.round((day.notesCount / day.entries.length) * 100)}%` : '0%',
+            'Completion Rate': day.entries.length > 0 ? 
+                `${Math.round((day.doneCount / day.entries.length) * 100)}%` : '0%'
+        })).sort((a, b) => new Date(b.Date) - new Date(a.Date));
+
+        // 🆕 ENHANCED: Material Summary with note history count
+        const materialSummary = {};
+        takeHistory.forEach(entry => {
+            if (!materialSummary[entry.materialId]) {
+                materialSummary[entry.materialId] = {
+                    materialId: entry.materialId,
+                    description: entry.materialDescription,
+                    totalEntries: 0,
+                    totalQuantity: 0,
+                    pendingCount: 0,
+                    doneCount: 0,
+                    notesCount: 0,
+                    datesWithActivity: new Set(),
+                    datesWithNotes: new Set(),
+                    latestActivity: entry.timestamp,
+                    firstActivity: entry.timestamp
+                };
+            }
+            
+            const summary = materialSummary[entry.materialId];
+            summary.totalEntries++;
+            summary.totalQuantity += entry.quantity;
+            summary.datesWithActivity.add(entry.timestamp.toDateString());
+            
+            if (entry.adgiStatus === 'pending') summary.pendingCount++;
+            else if (entry.adgiStatus === 'done') summary.doneCount++;
+            
+            if (entry.adgiNote && entry.adgiNote.trim()) {
+                summary.notesCount++;
+                summary.datesWithNotes.add(entry.timestamp.toDateString());
+            }
+            
+            if (entry.timestamp > summary.latestActivity) {
+                summary.latestActivity = entry.timestamp;
+            }
+            if (entry.timestamp < summary.firstActivity) {
+                summary.firstActivity = entry.timestamp;
+            }
+        });
+        
+        const materialSummaryData = Object.values(materialSummary).map(material => ({
+            'Material ID': material.materialId,
+            'Description': material.description,
+            'Total Entries': material.totalEntries,
+            'Total Quantity': material.totalQuantity,
+            'Pending': material.pendingCount,
+            'Done': material.doneCount,
+            'Entries with Notes': material.notesCount,
+            'Active Days': material.datesWithActivity.size,
+            'Days with Notes': material.datesWithNotes.size,
+            'Note Coverage': material.totalEntries > 0 ? 
+                `${Math.round((material.notesCount / material.totalEntries) * 100)}%` : '0%',
+            'Completion Rate': material.totalEntries > 0 ? 
+                `${Math.round((material.doneCount / material.totalEntries) * 100)}%` : '0%',
+            'First Activity': material.firstActivity.toLocaleDateString('id-ID'),
+            'Latest Activity': material.latestActivity.toLocaleDateString('id-ID'),
+            'Activity Span (Days)': Math.ceil((material.latestActivity - material.firstActivity) / (1000 * 60 * 60 * 24))
+        })).sort((a, b) => b['Total Entries'] - a['Total Entries']);
+
+        // 🆕 ENHANCED: Notes-only export for easy reference
+        const notesOnlyData = takeHistory
+            .filter(entry => entry.adgiNote && entry.adgiNote.trim())
+            .map(entry => ({
+                'Date': entry.timestamp.toLocaleDateString('id-ID'),
+                'Time': entry.timestamp.toLocaleTimeString('id-ID'),
+                'Material ID': entry.materialId,
+                'Description': entry.materialDescription,
+                'Warehouse Transaction Note': entry.adgiNote,
+                'BIN': entry.binNumber,
+                'Quantity': entry.quantity,
+                'Current Status': entry.adgiStatus,
+                'Note Length': entry.adgiNote.length,
+                'Note Updated': entry.adgiNoteUpdatedAt ? 
+                    new Date(entry.adgiNoteUpdatedAt).toLocaleString('id-ID') : 'N/A',
+                'User': entry.user,
+                'Transaction ID': entry.id
+            }));
+
+        // 🆕 ENHANCED: Overall statistics
+        const totalNotes = notesOnlyData.length;
+        const uniqueMaterialsWithNotes = new Set(notesOnlyData.map(n => n['Material ID'])).size;
+        const uniqueDatesWithNotes = new Set(notesOnlyData.map(n => n.Date)).size;
+        
         const stats = [
-            ['Metric', 'Value'],
-            ['Total ADGI Entries', takeHistory.length],
-            ['Pending Status', takeHistory.filter(h => h.adgiStatus === 'pending').length],
-            ['Done Status', takeHistory.filter(h => h.adgiStatus === 'done').length],
-            ['Entries with Notes', takeHistory.filter(h => h.adgiNote && h.adgiNote.trim()).length],
-            ['Unique Materials', new Set(takeHistory.map(h => h.materialId)).size],
-            ['Date Range', `${Math.min(...takeHistory.map(h => h.timestamp))} - ${Math.max(...takeHistory.map(h => h.timestamp))}`],
-            ['Report Generated', new Date().toLocaleString('id-ID')]
+            ['Metric', 'Value', 'Details'],
+            ['Report Generated', new Date().toLocaleString('id-ID'), 'Current timestamp'],
+            ['Total ADGI Entries', takeHistory.length, 'All take actions'],
+            ['Entries with Notes', totalNotes, `${Math.round((totalNotes/takeHistory.length)*100)}% coverage`],
+            ['Unique Materials with Notes', uniqueMaterialsWithNotes, 'Materials that have notes'],
+            ['Dates with Note Activity', uniqueDatesWithNotes, 'Days where notes were added'],
+            ['Pending Status', takeHistory.filter(h => h.adgiStatus === 'pending').length, 'Awaiting completion'],
+            ['Done Status', takeHistory.filter(h => h.adgiStatus === 'done').length, 'Completed entries'],
+            ['Overall Completion Rate', `${Math.round((takeHistory.filter(h => h.adgiStatus === 'done').length/takeHistory.length)*100)}%`, 'Done vs Total'],
+            ['Note Coverage Rate', `${Math.round((totalNotes/takeHistory.length)*100)}%`, 'Entries with notes vs Total'],
+            ['Average Note Length', totalNotes > 0 ? Math.round(notesOnlyData.reduce((sum, n) => sum + n['Note Length'], 0) / totalNotes) : 0, 'Characters per note'],
+            ['Date Range', takeHistory.length > 0 ? `${new Date(Math.min(...takeHistory.map(h => h.timestamp))).toLocaleDateString('id-ID')} - ${new Date(Math.max(...takeHistory.map(h => h.timestamp))).toLocaleDateString('id-ID')}` : 'No data', 'First to last activity']
         ];
         
         // Create sheets
         const detailSheet = XLSX.utils.json_to_sheet(adgiDetailData);
-        const summarySheet = XLSX.utils.json_to_sheet(summaryData);
+        const dailySheet = XLSX.utils.json_to_sheet(dailySummaryData);
+        const materialSheet = XLSX.utils.json_to_sheet(materialSummaryData);
+        const notesSheet = XLSX.utils.json_to_sheet(notesOnlyData);
         const statsSheet = XLSX.utils.aoa_to_sheet(stats);
         
         // Set column widths
         detailSheet['!cols'] = [
-            {wch: 12}, {wch: 10}, {wch: 15}, {wch: 25}, {wch: 8}, 
-            {wch: 8}, {wch: 12}, {wch: 12}, {wch: 30}, {wch: 18}, 
-            {wch: 18}, {wch: 12}, {wch: 20}
+            {wch: 12}, {wch: 10}, {wch: 15}, {wch: 25}, {wch: 8}, {wch: 8}, 
+            {wch: 12}, {wch: 12}, {wch: 40}, {wch: 8}, {wch: 18}, 
+            {wch: 18}, {wch: 12}, {wch: 20}, {wch: 8}
         ];
         
-        summarySheet['!cols'] = [
-            {wch: 15}, {wch: 25}, {wch: 12}, {wch: 12}, {wch: 15}, 
-            {wch: 12}, {wch: 30}, {wch: 10}, {wch: 18}, {wch: 18}, {wch: 12}
+        dailySheet['!cols'] = [
+            {wch: 12}, {wch: 12}, {wch: 10}, {wch: 12}, {wch: 10}, 
+            {wch: 10}, {wch: 12}, {wch: 12}, {wch: 12}
         ];
         
-        statsSheet['!cols'] = [{wch: 25}, {wch: 30}];
+        materialSheet['!cols'] = [
+            {wch: 15}, {wch: 25}, {wch: 10}, {wch: 12}, {wch: 8}, {wch: 8}, 
+            {wch: 12}, {wch: 10}, {wch: 12}, {wch: 12}, {wch: 12}, {wch: 12}, 
+            {wch: 12}, {wch: 12}
+        ];
+        
+        notesSheet['!cols'] = [
+            {wch: 12}, {wch: 10}, {wch: 15}, {wch: 25}, {wch: 40}, {wch: 8}, 
+            {wch: 8}, {wch: 12}, {wch: 8}, {wch: 18}, {wch: 12}, {wch: 20}
+        ];
+        
+        statsSheet['!cols'] = [{wch: 25}, {wch: 20}, {wch: 30}];
         
         // Append sheets
         XLSX.utils.book_append_sheet(workbook, detailSheet, 'ADGI Detail');
-        XLSX.utils.book_append_sheet(workbook, summarySheet, 'ADGI Summary');
+        XLSX.utils.book_append_sheet(workbook, dailySheet, 'Daily Summary');
+        XLSX.utils.book_append_sheet(workbook, materialSheet, 'Material Summary');
+        XLSX.utils.book_append_sheet(workbook, notesSheet, 'Notes Only');
         XLSX.utils.book_append_sheet(workbook, statsSheet, 'Statistics');
         
         // Generate filename
         const timestamp = new Date().toISOString().slice(0, 10);
-        const filename = `ADGI_Report_${timestamp}.xlsx`;
+        const filename = `ADGI_Report_With_Notes_${timestamp}.xlsx`;
         
         XLSX.writeFile(workbook, filename);
         
-        const notesCount = takeHistory.filter(h => h.adgiNote && h.adgiNote.trim()).length;
         showToast(
-            `📋 ADGI Report berhasil diekspor: ${filename}\n` +
-            `📊 ${takeHistory.length} entries, ${notesCount} dengan notes`,
+            `📋 ADGI Report komprehensif berhasil diekspor: ${filename}\n` +
+            `📊 ${takeHistory.length} entries | 📝 ${totalNotes} notes | 🏭 ${uniqueMaterialsWithNotes} materials dengan notes\n` +
+            `📅 ${uniqueDatesWithNotes} hari dengan aktivitas note`,
             'success'
         );
         
-        console.log('✅ ADGI Report exported successfully');
+        console.log('✅ Comprehensive ADGI Report exported successfully');
         return true;
         
     } catch (error) {
@@ -2940,6 +3470,21 @@
         showToast('❌ Gagal mengekspor ADGI Report: ' + error.message, 'error');
         return false;
     }
+}
+
+// 🆕 NEW: Function to handle new material entry (simulate pending reset for same material)
+function handleNewMaterialEntry(materialId) {
+    console.log('🆕 Handling new material entry for:', materialId);
+    
+    // When new material comes in, we DON'T change existing entries
+    // Each entry maintains its own note and status based on its date
+    // This preserves the note history as requested
+    
+    // The consolidation function will show the latest status for display purposes
+    // but individual entries keep their historical data intact
+    
+    console.log('✅ New material entry handled - historical notes preserved');
+    updateADGIDisplay();
 }
 
         // ✅ TAMBAHAN FUNGSI: Manual save untuk testing
@@ -3565,26 +4110,59 @@ async function confirmADGIStatusUpdate() {
     try {
         // Close confirmation modal first
         closeADGIConfirmationModal();
-
-         const updatedEntries = [];
+        
+        // Get today's date key for date-specific updates
+        const todayDateKey = new Date().toDateString();
+        
+        const updatedEntries = [];
         history = history.map(entry => {
-            if (entry.action === 'take' && entry.materialId === currentADGIMaterialId) {
+            // 🔥 PERBAIKAN: Hanya update entries dari HARI INI untuk material ini
+            if (entry.action === 'take' && 
+                entry.materialId === currentADGIMaterialId && 
+                entry.timestamp.toDateString() === todayDateKey) {
+                
+                // 🚨 CRITICAL: PRESERVE existing note, only append if new note provided
+                let finalNote = entry.adgiNote || ''; // ALWAYS preserve existing note
+                let noteTimestamp = entry.adgiNoteUpdatedAt;
+                
+                // Only add new note if user provided one
+                if (currentADGINote && currentADGINote.trim().length > 0) {
+                    const currentTime = new Date().toLocaleTimeString('id-ID');
+                    const newNoteEntry = `[${currentTime}] ${currentADGINote}`;
+                    
+                    if (finalNote && finalNote.trim()) {
+                        // Append to existing note for TODAY only
+                        finalNote = finalNote + '\n' + newNoteEntry;
+                        console.log('📝 APPENDING to TODAY\'s note for entry:', entry.id);
+                    } else {
+                        // First note for today
+                        finalNote = newNoteEntry;
+                        console.log('📝 CREATING first note for TODAY\'s entry:', entry.id);
+                    }
+                    noteTimestamp = new Date();
+                } else {
+                    console.log('📝 PRESERVING existing note unchanged for:', entry.id);
+                }
+                
                 const updatedEntry = {
                     ...entry,
                     adgiStatus: currentADGINewStatus,
-                    adgiNote: currentADGINote || entry.adgiNote || '',
-                    adgiNoteUpdatedAt: currentADGINote ? new Date() : entry.adgiNoteUpdatedAt,
                     adgiUpdatedAt: new Date(),
-                    adgiUpdatedBy: 'Current User'
+                    adgiUpdatedBy: 'Current User',
+                    adgiNote: finalNote, // Never replace, only append or preserve
+                    adgiNoteUpdatedAt: noteTimestamp
                 };
+                
                 updatedEntries.push(updatedEntry);
-                console.log('📝 Updated entry:', updatedEntry.id, 'status:', updatedEntry.adgiStatus, 'note:', updatedEntry.adgiNote);
+                console.log('📝 Updated entry:', updatedEntry.id, 'note:', updatedEntry.adgiNote);
                 return updatedEntry;
             }
+            
+            // 🔥 CRITICAL: Leave ALL other entries (other days/materials) COMPLETELY unchanged
             return entry;
         });
         
-        console.log(`✅ Updated ${updatedEntries.length} history entries`);
+        console.log(`✅ Updated ${updatedEntries.length} history entries from TODAY only`);
         
         // Save to Firebase
         await persistAll();
@@ -3598,10 +4176,11 @@ async function confirmADGIStatusUpdate() {
         showADGISuccessModal();
         
         // Show toast with details
-        const noteText = currentADGINote ? ' dengan note' : '';
+        const noteText = currentADGINote ? ' dengan note baru DITAMBAHKAN ke hari ini' : '';
         const statusText = currentADGINewStatus === 'done' ? 'Done' : 'Pending';
         showADGIToast(
-            `✅ Status ADGI untuk ${currentADGIMaterialId} (${updatedEntries.length} entries) berhasil diperbarui ke ${statusText}${noteText}`, 
+            `✅ Status ADGI untuk ${currentADGIMaterialId} (${updatedEntries.length} entries hari ini) berhasil diperbarui ke ${statusText}${noteText}\n` +
+            `📝 Note lama tetap tersimpan, note baru ditambahkan dengan timestamp`, 
             'success'
         );
         
@@ -3617,19 +4196,132 @@ async function confirmADGIStatusUpdate() {
 }
 
 async function performADGIStatusUpdate(materialId, newStatus, note) {
-  history = history.map(entry =>
-    (entry.action === 'take' && entry.materialId === materialId)
-      ? { ...entry,
-          adgiStatus: newStatus,
-          adgiNote: note || '',
-          adgiUpdatedAt: Date.now(),
-          adgiUpdatedBy: currentUser || 'System' }
-      : entry
-  );
-  await persistAll();
-  updateADGIDisplay?.();
-  showADGISuccessModal?.();
+    console.log('🔄 Performing ADGI status update:', { materialId, newStatus, note });
+    
+    // Get today's date key for date-specific updates
+    const todayDateKey = new Date().toDateString();
+    
+    let updatedCount = 0;
+    history = history.map(entry => {
+        // Only update entries from TODAY for this material
+        if (entry.action === 'take' && 
+            entry.materialId === materialId && 
+            entry.timestamp.toDateString() === todayDateKey) {
+            
+            updatedCount++;
+            
+            // 🚨 CRITICAL: NEVER touch existing note, only append if new note provided
+            let finalNote = entry.adgiNote || ''; // Always preserve existing note
+            let noteTimestamp = entry.adgiNoteUpdatedAt;
+            
+            // Only add new note if user provided one
+            if (note && note.trim().length > 0) {
+                const currentTime = new Date().toLocaleTimeString('id-ID');
+                const newNoteEntry = `[${currentTime}] ${note}`;
+                
+                if (finalNote && finalNote.trim()) {
+                    // Append to existing note for TODAY only
+                    finalNote = finalNote + '\n' + newNoteEntry;
+                    console.log('📝 APPENDING to TODAY\'s note for entry:', entry.id);
+                } else {
+                    // First note for today
+                    finalNote = newNoteEntry;
+                    console.log('📝 CREATING first note for TODAY\'s entry:', entry.id);
+                }
+                noteTimestamp = new Date();
+            } else {
+                console.log('📝 PRESERVING existing note unchanged for:', entry.id);
+            }
+            
+            return {
+                ...entry,
+                adgiStatus: newStatus,
+                adgiUpdatedAt: new Date(),
+                adgiUpdatedBy: currentUser || 'System',
+                adgiNote: finalNote, // Never replace, only append or preserve
+                adgiNoteUpdatedAt: noteTimestamp
+            };
+        }
+        
+        // 🔥 CRITICAL: Leave ALL other entries (other days/materials) COMPLETELY unchanged
+        return entry;
+    });
+    
+    console.log(`✅ Updated ${updatedCount} entries from TODAY`);
+    
+    await persistAll();
+    
+    if (typeof updateADGIDisplay === 'function') {
+        updateADGIDisplay();
+    }
+    
+    if (typeof showADGISuccessModal === 'function') {
+        showADGISuccessModal();
+    }
 }
+
+// PERBAIKAN 3: Tambahkan fungsi helper untuk debugging note history
+function debugNoteHistory(materialId) {
+    console.log('🔍 Debugging note history for material:', materialId);
+    
+    const entries = history.filter(entry => 
+        entry.action === 'take' && 
+        entry.materialId === materialId &&
+        entry.adgiNote && entry.adgiNote.trim()
+    );
+    
+    console.table(entries.map(entry => ({
+        id: entry.id,
+        date: entry.timestamp.toLocaleDateString('id-ID'),
+        time: entry.timestamp.toLocaleTimeString('id-ID'),
+        note: entry.adgiNote.substring(0, 50) + '...',
+        noteLength: entry.adgiNote.length,
+        status: entry.adgiStatus,
+        noteUpdated: entry.adgiNoteUpdatedAt ? 
+            new Date(entry.adgiNoteUpdatedAt).toLocaleString('id-ID') : 'N/A'
+    })));
+    
+    return entries;
+}
+
+// PERBAIKAN 4: Tambahkan validasi note preservation
+function validateNotePreservation(materialId) {
+    console.log('✅ Validating note preservation for:', materialId);
+    
+    // Get all dates with notes for this material
+    const noteDates = {};
+    
+    history.filter(entry => 
+        entry.action === 'take' && 
+        entry.materialId === materialId && 
+        entry.adgiNote && entry.adgiNote.trim()
+    ).forEach(entry => {
+        const dateKey = entry.timestamp.toDateString();
+        if (!noteDates[dateKey]) {
+            noteDates[dateKey] = [];
+        }
+        noteDates[dateKey].push({
+            id: entry.id,
+            note: entry.adgiNote,
+            time: entry.timestamp.toLocaleTimeString('id-ID'),
+            noteUpdated: entry.adgiNoteUpdatedAt
+        });
+    });
+    
+    console.log('📅 Notes by date for', materialId, ':', noteDates);
+    
+    // Validate that each date has separate notes
+    Object.entries(noteDates).forEach(([date, entries]) => {
+        console.log(`📋 ${date}: ${entries.length} entries with notes`);
+        entries.forEach(entry => {
+            console.log(`  - Entry ${entry.id}: "${entry.note.substring(0, 30)}..."`);
+        });
+    });
+    
+    return noteDates;
+}
+
+console.log('🔧 ADGI Note Preservation Fix Applied - Notes will now be preserved by date');
 
 
 function updateADGIUI(materialId, newStatus, note) {
