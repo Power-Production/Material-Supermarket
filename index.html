@@ -4748,7 +4748,6 @@ document.addEventListener('keydown', function(e) {
   // Fungsi untuk persist semua data
   async function persistAll() {
   try {
-    // STEP 1: Bersihkan data dari undefined sebelum simpan ke Firebase
     const firebaseData = {
       materials: JSON.parse(JSON.stringify(materials, (key, value) => {
         return value === undefined ? null : value;
@@ -4758,20 +4757,16 @@ document.addEventListener('keydown', function(e) {
       }))
     };
     
-    // STEP 2: Simpan ke Firebase dengan data yang sudah dibersihkan
     await Promise.all([
       saveMaterials(firebaseData.materials), 
       saveHistory(firebaseData.history)
     ]);
     
-    // STEP 3: Simpan ke localStorage (dengan timestamp conversion)
     const localStorageData = {
       materials, 
       history: history.map(h => {
-        // Buat copy object baru
         const newH = {};
         
-        // Copy semua property kecuali yang undefined
         Object.keys(h).forEach(key => {
           if (h[key] !== undefined) {
             if (key === 'timestamp') {
@@ -4780,7 +4775,6 @@ document.addEventListener('keydown', function(e) {
               newH[key] = h[key];
             }
           }
-          // Skip property yang undefined
         });
         
         return newH;
@@ -4794,11 +4788,9 @@ document.addEventListener('keydown', function(e) {
   } catch (e) {
     console.error("Persist error:", e);
     
-    // Debug: tampilkan data yang bermasalah
     console.log("Materials:", materials);
     console.log("History:", history);
     
-    // Cek item history yang bermasalah (dari error Anda: history.1)
     if (history[1]) {
       console.log("History[1]:", history[1]);
       console.log("History[1] keys with undefined:");
@@ -4810,7 +4802,6 @@ document.addEventListener('keydown', function(e) {
     }
   }
 }
-
 
   window.addEventListener('beforeunload', function() {
     persistAll();
